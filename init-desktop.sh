@@ -5,6 +5,7 @@ install -d -o abc -g abc /config/Desktop /config/Downloads /config/.config/autos
 # hostname must not prevent opening the persistent Brave profile.
 for lock in SingletonLock SingletonSocket SingletonCookie; do
   rm -f -- "/config/.config/BraveSoftware/Brave-Browser/$lock"
+  rm -f -- "/config/.config/cloud-pc-brave-safe/$lock"
 done
 if [[ ! -f /config/Desktop/Brave.desktop ]]; then
   install -o abc -g abc -m 0755 /opt/cloud-pc/Brave.desktop /config/Desktop/Brave.desktop

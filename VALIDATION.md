@@ -1,34 +1,40 @@
-# Verification scope — mobile update
+# Verification scope — shared session update
 
 Prepared: 2026-10-29.
 
-## Local checks
+## Checked locally
 
-- 33 Python tests pass: startup validation, secret-free errors, port conflicts, the Nginx route patch, real loopback HTTP requests to the control service, cross-origin/form request rejection, payload bounds, invalid commands, resource-limit detection, OOM counters, and safe URL/search handling.
-- The JavaScript layout check passes on six portrait/landscape viewport sizes. At fit zoom the full desktop stays within the viewport; zoom preserves the desktop resolution and gives all enlarged content reachable scroll bounds.
-- JavaScript syntax, Python parsing and Bash syntax are checked.
-- Docker COPY inputs and the flat ZIP layout are checked; no passwords, personal screenshots, cached bytecode or nested upload folders are included.
+- 43 Python tests pass, including two browser-attach calls that must focus the existing video window without navigation, clipboard writes or application launch.
+- Checks cover application/window allowlists, reusing open programs, real minimize versus close, maximize/restore, shared mode persistence without deleting the original profile, graceful browser recovery, startup dimensions, authentication-preserving routes, API request/origin validation, payload bounds, safe URL creation, cgroup limits and OOM counters.
+- Six portrait/landscape geometry checks pass. All clients use the same shared display size; client zoom does not alter it, fit does not crop it, and enlarged content gets reachable scroll bounds.
+- Python, JavaScript and Bash syntax are checked. Docker COPY sources and the flat upload archive are checked.
 
-## Runtime changes
+## Changed behavior
 
-The root page is now a mobile control shell. The upstream Selkies desktop stays at /desktop/. Controls are a dedicated, allowlisted Python service on loopback port 7801, behind the same Nginx login. A custom request header, JSON-only writes, origin checks, and fixed argument arrays protect the control endpoint. It provides no arbitrary shell execution API.
+- Opening the browser focuses its current window; it no longer navigates an existing window to Google. The UI does not send a launch or navigation action when a viewer page loads.
+- Authenticated clients join one shared X11 desktop. Its default 1280×800 resolution is independent of the viewer's screen. No connect/disconnect application hooks are installed.
+- Background timer/renderer throttling flags and disabled virtual display blanking reduce idle interruptions, while the browser remains a normal persistent server process.
+- A per-service-run session identifier lets users distinguish reconnecting from restarting the container.
+- Normal and safe Brave profiles use fixed server paths. Safe mode is an explicit user action with an independent profile; the original profile is retained.
 
-The browser opens on demand by default, with CPU rendering and shared-memory compatibility flags. Existing user files and browser profiles remain in /config. The project's old autostart entry is updated; BROWSER_AUTO_START=true can opt back into automatic browser startup.
+## Not verified live
 
-## What has not been verified here
+Docker and X11 tools are unavailable in the preparation environment. No image build, real program launch/window control, Brave renderer or actual multi-device YouTube playback was run. The live hosted site could not be inspected in the available browser; no live crash diagnosis is claimed.
 
-Docker, X11 desktop tools and a browser executable are unavailable in this preparation environment. No Docker build, real wmctrl/xdotool/xclip operation, Brave renderer, touchscreen session, visual browser rendering or Railway deployment was run. The automated HTTP tests simulate desktop actions after checking request handling. The layout tests are calculations, not screenshots of a real browser.
+The desktop actions in automated tests are mocked. Layout checks are calculations rather than screenshots or real touch input. Browser smoke testing and background media behavior need validation after deployment.
 
-The screenshot's renderer error can be consistent with memory pressure, but no live OOM counter or browser crash dump from the user's deployment was available. The runtime UI now reports actual cgroup usage and OOM-kill counters when exposed by the host. It does not identify which process was killed, and the update cannot increase a hosting plan's resources or remove its network restrictions.
+## Verify after deployment
 
-## After deployment
+1. Keep one replica, the same /config volume, and a service that does not sleep. Open the root HTTPS URL and check login remains required for the UI, /desktop/ and the control API.
+2. Open programs on the computer and phone, and test focus, maximize, minimize and restore from the window list.
+3. Start a video, note the session ID, close only the outer control tab, then open the same service URL in another browser/device. Verify the same ID, window, page and running playback.
+4. Check audio after the new device's first permitted user gesture; receiving audio is separate from keeping server-side media running.
+5. Test zoom, the pan/control toggle, fit, full screen, keyboard/text input and desktop mouse controls.
+6. If Oops persists, inspect actual memory/OOM indicators and private Brave stderr output, then test the explicit safe-profile recovery. Do not assume all renderer failures are memory-related.
+7. Restart/redeploy separately: open processes are expected to close, but profile files and downloads should persist in the mounted volume.
 
-1. Confirm /healthz returns 200 and root, /desktop/ and /mobile-control/status require login.
-2. Open the main HTTPS URL on the phone and confirm the toolbar is visible, with the desktop fitting its viewport.
-3. Press Google, navigate using the top address bar, maximize the browser and close one tab/window from the toolbar.
-4. Try visual zoom, scrolling enlarged content, fit, rotation and full screen where the browser supports it.
-5. Select a remote text field, open the local text panel, paste Arabic text and press Enter.
-6. Check the resource badge, confirm the browser remains stable with the actual memory limit, and inspect Deploy Logs if it still crashes.
-7. Disconnect/reconnect, then recreate the container with the same /config volume and confirm saved files and the browser profile remain. Open windows close during recreation.
+## Operational limits
 
-Railway's published policy prohibits virtual desktops. Technical compatibility and offline checks do not imply provider permission or guaranteed uptime.
+The update cannot increase a hosting plan's CPU/RAM, prevent the provider from stopping a service, keep processes alive through container restart, or guarantee playback against a site's own behavior. A volume stores files rather than running memory state. Background playback may consume more resources. No fake traffic or network keep-alive loop is added.
+
+Railway's published policy prohibits virtual desktops. Offline technical compatibility does not imply provider permission, availability or guaranteed uptime.

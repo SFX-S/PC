@@ -16,7 +16,7 @@ SPEC.loader.exec_module(NGINX)
 class StartupTests(unittest.TestCase):
     def launch(self, **values):
         environment = dict(os.environ)
-        for key in ("PORT", "CUSTOM_PORT", "CUSTOM_USER", "PASSWORD"):
+        for key in ("PORT", "CUSTOM_PORT", "CUSTOM_USER", "PASSWORD", "DESKTOP_WIDTH", "DESKTOP_HEIGHT"):
             environment.pop(key, None)
         environment.update(values)
         return subprocess.run(["bash", str(START), "--check-config"], env=environment,
@@ -41,6 +41,17 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("9200", result.stdout)
         self.assertIn("captain", result.stdout)
+
+    def test_shared_resolution_stable_by_default(self):
+        result = self.launch(PASSWORD="A_valid_test_password_12345")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("shared display: 1280x800", result.stdout)
+
+    def test_desktop_dimensions_validated(self):
+        for dimension in ("0", "99999", "$(id)"):
+            with self.subTest(dimension=dimension):
+                result = self.launch(DESKTOP_WIDTH=dimension, PASSWORD="A_valid_test_password_12345")
+                self.assertNotEqual(result.returncode, 0)
 
     def test_unsupported_port_values_rejected(self):
         for port in ("abc", "1023", "65536", "99999999999999999999", "8080;id", "-1", "0"):

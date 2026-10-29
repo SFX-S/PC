@@ -14,4 +14,6 @@ for (const [width, height] of [[360, 510], [390, 620], [430, 700], [740, 220], [
   checked++;
 }
 assert.equal(layout(390, 620, geometry(390, 620), 99).factor, layout(390, 620, geometry(390, 620), 2.5).factor);
+assert.deepEqual(geometry(390, 620), geometry(1920, 1000), "New devices must not change the shared desktop size");
+assert.deepEqual(geometry(390, 620, {width: 1600, height: 900}), geometry(1920, 1000, {width: 1600, height: 900}));
 process.stdout.write("Mobile layout: " + checked + " portrait/landscape sizes passed.\n");

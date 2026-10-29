@@ -3,7 +3,8 @@
   const $ = (id) => document.getElementById(id);
   const frame = $("desktop"), viewport = $("viewport"), surface = $("surface");
   const keyboard = $("keyboard-dialog"), more = $("more-menu");
-  let zoom = 1, size, resizeTimer, toastTimer, typedActive = false, queue = Promise.resolve();
+  const programs = $("programs-dialog");
+  let zoom = 1, size, remoteSize = { width: 1280, height: 800 }, currentSession, resizeTimer, toastTimer, typedActive = false, panning = false, drag, queue = Promise.resolve();
   function toast(message) {
     $("toast").textContent = message;
     $("toast").hidden = false;
@@ -14,7 +15,7 @@
     const bounds = viewport.getBoundingClientRect();
     if (bounds.width < 1 || bounds.height < 1) return;
     if (!size || resetGeometry) {
-      size = MobileLayout.geometry(bounds.width, bounds.height);
+      size = MobileLayout.geometry(bounds.width, bounds.height, remoteSize);
       frame.style.width = size.width + "px";
       frame.style.height = size.height + "px";
     }
@@ -36,6 +37,13 @@
     viewport.scrollLeft = (x + viewport.clientWidth / 2) * zoom / old - viewport.clientWidth / 2;
     viewport.scrollTop = (y + viewport.clientHeight / 2) * zoom / old - viewport.clientHeight / 2;
     if (zoom === 1) viewport.scrollTo(0, 0);
+    setPanning(zoom > 1);
+  }
+  function setPanning(enabled) {
+    panning = enabled;
+    $("pan-layer").hidden = !panning;
+    $("pan-label").textContent = panning ? "تحكم" : "تحريك";
+    $("pan").setAttribute("aria-pressed", String(panning));
   }
   async function post(data) {
     const response = await fetch("/mobile-control/command", {
@@ -71,6 +79,19 @@
   $("zoom-in").addEventListener("click", () => setZoom(zoom + .25));
   $("zoom-out").addEventListener("click", () => setZoom(zoom - .25));
   $("fit").addEventListener("click", () => { setZoom(1); arrange(true); });
+  $("pan").addEventListener("click", () => setPanning(!panning));
+  $("pan-layer").addEventListener("pointerdown", (event) => {
+    drag = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  $("pan-layer").addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    viewport.scrollLeft = drag.left - (event.clientX - drag.x);
+    viewport.scrollTop = drag.top - (event.clientY - drag.y);
+  });
+  $("pan-layer").addEventListener("pointerup", () => { drag = null; });
+  $("pan-layer").addEventListener("pointercancel", () => { drag = null; });
   $("fullscreen").addEventListener("click", async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -91,12 +112,48 @@
   });
   $("more").addEventListener("click", () => more.showModal());
   $("more-close").addEventListener("click", () => more.close());
+  $("programs").addEventListener("click", () => { programs.showModal(); refreshStatus(); });
+  $("programs-close").addEventListener("click", () => programs.close());
+  function programButton(label, data) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      programs.close();
+      request(data, button).catch(() => {});
+    });
+    return button;
+  }
+  function renderPrograms(status) {
+    $("program-list").replaceChildren(programButton("◎ المتصفح الحالي", { action: "open-browser" }));
+    for (const app of status.apps || []) {
+      $("program-list").appendChild(programButton(app.icon + " " + app.label, { action: "open-program", app: app.id }));
+    }
+    $("window-list").replaceChildren();
+    for (const window of status.windows || []) {
+      $("window-list").appendChild(programButton(window.title, { action: "focus-window", window: window.id }));
+    }
+    if (!(status.windows || []).length) $("window-list").textContent = "لا توجد نوافذ ظاهرة بعد، أو سطح المكتب قيد التشغيل.";
+  }
   $("reconnect").addEventListener("click", () => { more.close(); frame.src = "/desktop/?reconnect=" + Date.now(); toast("جارٍ إعادة اتصال الشاشة…"); });
   async function refreshStatus() {
     try {
       const response = await fetch("/mobile-control/status", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(5000) });
       if (!response.ok) throw new Error();
       const status = await response.json(), memory = status.memory;
+      if (status.session) {
+        const session = status.session;
+        if (currentSession && currentSession !== session.id) {
+          toast("أعيد تشغيل الخدمة؛ هذه جلسة تشغيل جديدة. الملفات المحفوظة تبقى في التخزين الدائم.");
+          frame.src = "/desktop/";
+        }
+        currentSession = session.id;
+        $("session-label").textContent = "جلسة " + session.id + (session.browser_mode === "safe" ? " · Brave آمن" : " · مشتركة");
+        if (session.width !== remoteSize.width || session.height !== remoteSize.height) {
+          remoteSize = { width: session.width, height: session.height };
+          arrange(true);
+        }
+      }
+      renderPrograms(status);
       $("memory").textContent = memory.used_mb !== null ? "RAM " + memory.used_mb + (memory.limit_mb ? " / " + memory.limit_mb : "") + " MB" : "خدمة التحكم جاهزة";
       const pressure = memory.limit_mb && memory.used_mb / memory.limit_mb > .88;
       $("warning").hidden = !(memory.low_memory || pressure || memory.oom_kills > 0);

@@ -6,12 +6,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import threading
 import time
 from urllib.parse import quote, urlsplit
 
 LOCK = threading.Lock()
+HOME = Path("/config")
+SESSION_FILE = Path("/run/cloud-pc/session.json")
+APP_CATALOG = {
+    "files": {"label": "الملفات", "icon": "▣", "binary": "thunar", "classes": ("thunar",)},
+    "terminal": {"label": "الترمينال", "icon": ">_", "binary": "xfce4-terminal", "classes": ("xfce4-terminal",)},
+    "editor": {"label": "المفكرة", "icon": "✎", "binary": "mousepad", "classes": ("mousepad",)},
+    "monitor": {"label": "مراقبة الموارد", "icon": "▥", "binary": "xfce4-taskmanager", "classes": ("xfce4-taskmanager",)},
+    "chromium": {"label": "Chromium البديل", "icon": "◎", "binary": "wrapped-chromium", "classes": ("chromium",)},
+    "brave-log": {"label": "سجل أخطاء Brave", "icon": "!", "binary": "mousepad", "classes": ()},
+}
 KEYS = {"enter": "Return", "escape": "Escape", "tab": "Tab", "backspace": "BackSpace",
         "up": "Up", "down": "Down", "left": "Left", "right": "Right"}
 
@@ -74,6 +85,63 @@ def windows() -> list[tuple[str, str]]:
     return result
 
 
+def window_details() -> list[dict]:
+    result = []
+    for line in command(["wmctrl", "-lx"]).splitlines():
+        parts = line.split(None, 4)
+        if len(parts) >= 4 and "xfdesktop" not in parts[3].lower() and "xfce4-panel" not in parts[3].lower():
+            result.append({"id": parts[0], "class": parts[3].lower(), "title": parts[4] if len(parts) > 4 else "نافذة"})
+    return result
+
+
+def available_apps() -> list[dict]:
+    return [{"id": key, "label": app["label"], "icon": app["icon"]}
+            for key, app in APP_CATALOG.items() if shutil.which(app["binary"])]
+
+
+def launch_program(app_id: str) -> None:
+    app = APP_CATALOG.get(app_id)
+    if not app or not shutil.which(app["binary"]):
+        raise ControlError("البرنامج غير متاح في هذه النسخة.")
+    existing = next((w for w, cls in windows() if any(name in cls for name in app["classes"])), None)
+    if existing:
+        command(["wmctrl", "-ia", existing])
+    else:
+        args = [app["binary"]]
+        if app_id == "brave-log":
+            path = HOME / ".local/state/cloud-pc/brave.stderr.log"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(mode=0o600, exist_ok=True)
+            args.append(str(path))
+        subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def browser_mode() -> str:
+    try:
+        return "safe" if (HOME / ".config/cloud-pc/browser-mode").read_text().strip() == "safe" else "normal"
+    except OSError:
+        return "normal"
+
+
+def set_browser_mode(mode: str) -> None:
+    if mode not in ("normal", "safe"):
+        raise ControlError("وضع متصفح غير صالح.")
+    path = HOME / ".config/cloud-pc/browser-mode"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(mode + "\n")
+    path.chmod(0o600)
+
+
+def session_status() -> dict:
+    try:
+        data = json.loads(SESSION_FILE.read_text())
+    except (OSError, ValueError):
+        data = {"id": "unavailable", "width": 1280, "height": 800}
+    data["browser_mode"] = browser_mode()
+    return data
+
+
 def active_window() -> str:
     value = int(command(["xdotool", "getactivewindow"]))
     for window, _ in windows():
@@ -87,10 +155,15 @@ def browser_window(*, create: bool = True) -> str:
         return next((window for window, cls in windows() if "brave" in cls), None)
     window = find()
     if not window and create:
-        # No shell, and no user data in process arguments on this launch path.
-        subprocess.Popen(["/usr/local/bin/cloud-brave", "https://www.google.com/"],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+        log_path = HOME / ".local/state/cloud-pc/brave.stderr.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.exists() and log_path.stat().st_size > 2 * 1024 * 1024:
+            log_path.replace(log_path.with_suffix(".previous.log"))
+        with log_path.open("ab") as log:
+            log_path.chmod(0o600)
+            subprocess.Popen(["/usr/local/bin/cloud-brave", "https://www.google.com/"],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=log, start_new_session=True)
         for _ in range(20):
             time.sleep(0.2)
             window = find()
@@ -127,8 +200,15 @@ def navigate_browser(target: str) -> str:
 def perform(data: dict) -> dict:
     action = data.get("action")
     if action == "open-browser":
-        window = navigate_browser("https://www.google.com/")
-        command(["wmctrl", "-ir", window, "-b", "add,maximized_vert,maximized_horz"])
+        # Attach only: never replace the current YouTube/video/page with Google.
+        browser_window()
+    elif action == "open-program":
+        launch_program(data.get("app"))
+    elif action == "focus-window":
+        target = data.get("window")
+        if not isinstance(target, str) or target not in {w for w, _ in windows()}:
+            raise ControlError("هذه النافذة لم تعد مفتوحة.")
+        command(["wmctrl", "-ia", target])
     elif action == "navigate":
         target = navigation_url(data.get("text", ""))
         navigate_browser(target)
@@ -137,12 +217,14 @@ def perform(data: dict) -> dict:
         chord = {"back": "alt+Left", "reload": "ctrl+r", "new-tab": "ctrl+t", "close-tab": "ctrl+w",
                  "page-zoom-in": "ctrl+equal", "page-zoom-out": "ctrl+minus", "page-zoom-reset": "ctrl+0"}[action]
         command(["xdotool", "key", "--clearmodifiers", chord])
-    elif action in ("maximize", "restore", "close-window"):
+    elif action in ("maximize", "restore", "toggle-maximize", "minimize", "close-window"):
         window = active_window()
         if action == "close-window":
             command(["wmctrl", "-ic", window])
+        elif action == "minimize":
+            command(["xdotool", "windowminimize", window])
         else:
-            mode = "add" if action == "maximize" else "remove"
+            mode = {"maximize": "add", "restore": "remove", "toggle-maximize": "toggle"}[action]
             command(["wmctrl", "-ir", window, "-b", mode + ",maximized_vert,maximized_horz"])
     elif action == "paste":
         active_window()
@@ -153,9 +235,16 @@ def perform(data: dict) -> dict:
             raise ControlError("زر غير مدعوم.")
         active_window()
         command(["xdotool", "key", "--clearmodifiers", key])
-    elif action == "restart-browser":
+    elif action in ("restart-browser", "safe-browser", "normal-browser"):
         command(["pkill", "-TERM", "-x", "brave"], check=False)
-        time.sleep(0.5)
+        for _ in range(20):
+            if not command(["pgrep", "-x", "brave"], check=False):
+                break
+            time.sleep(0.1)
+        else:
+            raise ControlError("المتصفح لم يغلق بعد. انتظر قليلًا؛ لم نحذف قفل ملفه أو نقتل العملية بالقوة.")
+        if action != "restart-browser":
+            set_browser_mode("safe" if action == "safe-browser" else "normal")
         window = browser_window()
         command(["wmctrl", "-ir", window, "-b", "add,maximized_vert,maximized_horz"])
     else:
@@ -180,7 +269,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != "/status":
             return self.reply(404, {"error": "Not found"})
-        return self.reply(200, {"ok": True, "memory": memory_status()})
+        try:
+            open_windows = window_details()
+        except (subprocess.SubprocessError, OSError):
+            open_windows = []
+        return self.reply(200, {"ok": True, "memory": memory_status(), "session": session_status(),
+                               "apps": available_apps(), "windows": open_windows})
 
     def do_POST(self):
         if self.path != "/command":

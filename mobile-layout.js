@@ -1,10 +1,10 @@
 (function (root) {
   "use strict";
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-  function geometry(viewWidth, viewHeight) {
-    const vw = Math.max(1, viewWidth), vh = Math.max(1, viewHeight);
-    const width = Math.round(vw < 700 ? 640 : clamp(vw, 640, 1600));
-    const height = Math.round(clamp(vh * width / vw, 480, 1280));
+  function geometry(viewWidth, viewHeight, desktop) {
+    // Viewer geometry never changes the shared server's resolution.
+    const width = Math.round(clamp(Number(desktop?.width) || 1280, 640, 2560));
+    const height = Math.round(clamp(Number(desktop?.height) || 800, 480, 1440));
     return { width, height };
   }
   function layout(viewWidth, viewHeight, size, zoom) {
