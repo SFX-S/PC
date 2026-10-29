@@ -5,7 +5,7 @@ export PORT="${PORT:-8080}"
 export CUSTOM_USER="${CUSTOM_USER:-admin}"
 export CUSTOM_WS_PORT=8082
 export CUSTOM_HTTPS_PORT=3001
-export SUBFOLDER=/
+export SUBFOLDER=/desktop/
 export START_DOCKER=false
 
 if [[ ! "$PORT" =~ ^[0-9]{4,5}$ ]] || (( 10#$PORT < 1024 || 10#$PORT > 65535 )); then
@@ -16,7 +16,7 @@ PORT="$((10#$PORT))"
 export PORT
 export CUSTOM_PORT="$PORT"
 case "$PORT" in
-  3001|5000|5100|5173|8082)
+  3001|5000|5100|5173|7801|8082)
     echo 'ERROR: PORT conflicts with an internal service. Use 8080.' >&2
     exit 1
     ;;

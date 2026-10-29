@@ -1,5 +1,11 @@
 # Cloud PC + Brave — GitHub → Docker → Browser
 
+## تحديث التحكم بالجوال
+
+**[شرح النسخة الجديدة: MOBILE_AR.md](MOBILE_AR.md)** — عرض يلائم الجوال، أزرار كبيرة لتكبير وإغلاق النوافذ والتبويبات، شريط بحث محلي، إرسال النص العربي من كيبورد الجوال، ومؤشر ذاكرة. ارفع كل الملفات الجديدة مع Dockerfile المعدل ثم أعد النشر. تبقى بيانات الدخول وVolume كما هي.
+
+يفتح رابط الموقع الرئيسي لوحة التحكم الجديدة؛ البث الأصلي داخل `/desktop/`. Brave يفتح عند الضغط على زر Google بدل تشغيله تلقائيًا، لتخفيف الضغط على الخدمات ذات الذاكرة المحدودة. تغيير الإعدادات لا يرفع حد ذاكرة خطة الاستضافة.
+
 سطح مكتب Ubuntu XFCE مع Brave، يُبنى بواسطة Dockerfile ويفتح من رابط HTTPS كأنه موقع.
 
 **نسخة الرفع من الجوال: جميع الملفات جنب بعضها، بدون مجلدات فرعية.**
@@ -37,7 +43,8 @@ The project does not include legacy railway.json/railway.toml configuration. Doc
 ## Validate
 
 ```bash
-python3 -m unittest -v test_startup.py
+python3 -m unittest discover -s . -p 'test_*.py' -v
+node test_mobile_layout.js
 ```
 
 The package was prepared without an available Docker daemon. Offline tests cannot prove a successful image build, GUI boot or Railway deployment; see VALIDATION.md.

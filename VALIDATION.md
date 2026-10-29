@@ -1,35 +1,34 @@
-# Verification scope
+# Verification scope — mobile update
 
 Prepared: 2026-10-29.
 
-## Upload layout update
+## Local checks
 
-All project sources now sit at the archive root. Dockerfile COPY paths and the offline test paths were updated together. No subfolders need to be uploaded from a mobile file picker. Runtime destinations inside the image are unchanged.
+- 33 Python tests pass: startup validation, secret-free errors, port conflicts, the Nginx route patch, real loopback HTTP requests to the control service, cross-origin/form request rejection, payload bounds, invalid commands, resource-limit detection, OOM counters, and safe URL/search handling.
+- The JavaScript layout check passes on six portrait/landscape viewport sizes. At fit zoom the full desktop stays within the viewport; zoom preserves the desktop resolution and gives all enlarged content reachable scroll bounds.
+- JavaScript syntax, Python parsing and Bash syntax are checked.
+- Docker COPY inputs and the flat ZIP layout are checked; no passwords, personal screenshots, cached bytecode or nested upload folders are included.
 
-## Checked locally
+## Runtime changes
 
-- All 14 offline tests passed. Startup checks cover required credentials, invalid ports, internal port conflicts, custom ports, leading zeros, secret-free output and shell injection rejection.
-- Nginx template tests check that adding /healthz preserves authentication and fails explicitly if the upstream template changes.
-- Bash syntax checks cover the entrypoint, browser launcher, desktop initialization and optional smoke script.
-- Packaging checks verify the archive contents and exclude private credentials and generated caches.
+The root page is now a mobile control shell. The upstream Selkies desktop stays at /desktop/. Controls are a dedicated, allowlisted Python service on loopback port 7801, behind the same Nginx login. A custom request header, JSON-only writes, origin checks, and fixed argument arrays protect the control endpoint. It provides no arbitrary shell execution API.
 
-## Not checked in this environment
+The browser opens on demand by default, with CPU rendering and shared-memory compatibility flags. Existing user files and browser profiles remain in /config. The project's old autostart entry is updated; BROWSER_AUTO_START=true can opt back into automatic browser startup.
 
-Docker is not installed in the preparation environment. No image build, GUI boot, WebSocket session, TLS domain, persistent-volume restart or Railway deployment was run. The package is source code prepared for the documented flow; a successful live deployment is not claimed.
+## What has not been verified here
 
-## Verify on the actual host
+Docker, X11 desktop tools and a browser executable are unavailable in this preparation environment. No Docker build, real wmctrl/xdotool/xclip operation, Brave renderer, touchscreen session, visual browser rendering or Railway deployment was run. The automated HTTP tests simulate desktop actions after checking request handling. The layout tests are calculations, not screenshots of a real browser.
 
-1. Build the image and confirm the /init process runs as PID 1.
-2. Check /healthz returns 200 and / returns 401 without credentials.
-3. Log in over HTTPS and confirm XFCE, Brave, keyboard, pointer and clipboard.
-4. Open a website and create a file in /config/Downloads.
-5. Disconnect and reconnect while the container keeps running; confirm the session remains open.
-6. Recreate the container with the same /config volume; confirm files and browser profile remain. Open windows are expected to close during recreation.
+The screenshot's renderer error can be consistent with memory pressure, but no live OOM counter or browser crash dump from the user's deployment was available. The runtime UI now reports actual cgroup usage and OOM-kill counters when exposed by the host. It does not identify which process was killed, and the update cannot increase a hosting plan's resources or remove its network restrictions.
 
-`smoke.sh` automates a subset of these checks for a running local Docker container. It does not replace opening the actual desktop.
+## After deployment
 
-## Compatibility and policy
+1. Confirm /healthz returns 200 and root, /desktop/ and /mobile-control/status require login.
+2. Open the main HTTPS URL on the phone and confirm the toolbar is visible, with the desktop fitting its viewport.
+3. Press Google, navigate using the top address bar, maximize the browser and close one tab/window from the toolbar.
+4. Try visual zoom, scrolling enlarged content, fit, rotation and full screen where the browser supports it.
+5. Select a remote text field, open the local text panel, paste Arabic text and press Enter.
+6. Check the resource badge, confirm the browser remains stable with the actual memory limit, and inspect Deploy Logs if it still crashes.
+7. Disconnect/reconnect, then recreate the container with the same /config volume and confirm saved files and the browser profile remain. Open windows close during recreation.
 
-The Dockerfile relies on LinuxServer Webtop's ubuntu-xfce image and Brave's official apt repository. Upstream tags can change. The build intentionally stops if the expected Nginx template marker has changed.
-
-Railway's published workload policy prohibits virtual desktops. Docker/PORT compatibility does not imply permission, service availability or guaranteed uptime there.
+Railway's published policy prohibits virtual desktops. Technical compatibility and offline checks do not imply provider permission or guaranteed uptime.

@@ -48,7 +48,7 @@ class StartupTests(unittest.TestCase):
                 self.assertNotEqual(self.launch(PORT=port, PASSWORD="A_valid_test_password_12345").returncode, 0)
 
     def test_internal_ports_rejected(self):
-        for port in ("3001", "5000", "5100", "5173", "8082", "03001"):
+        for port in ("3001", "5000", "5100", "5173", "7801", "8082", "03001"):
             with self.subTest(port=port):
                 result = self.launch(PORT=port, PASSWORD="A_valid_test_password_12345")
                 self.assertNotEqual(result.returncode, 0)
@@ -93,8 +93,19 @@ class StartupTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             NGINX.add_health_location("  listen 3000 default_server;\n" * 2)
 
+    def test_mobile_routes_keep_desktop_location_and_auth(self):
+        original = ('server {\n  #auth_basic "Login";\n  listen 3000 default_server;\n'
+                    '  location SUBFOLDER { alias /usr/share/selkies/web/; }\n}\n'
+                    'server {\n  #auth_basic "Login";\n  listen 3001 ssl;\n'
+                    '  location SUBFOLDER { alias /usr/share/selkies/web/; }\n}\n')
+        modified = NGINX.add_mobile_routes(NGINX.add_health_location(original))
+        self.assertEqual(modified.count('  #auth_basic "Login";'), 2)
+        self.assertEqual(modified.count("  location SUBFOLDER {"), 2)
+        self.assertEqual(modified.count("  location /mobile-control/ {"), 2)
+        self.assertEqual(modified.count("auth_basic off;"), 1)
+
     def test_shell_syntax(self):
-        for path in (START, ROOT / "cloud-brave.sh", ROOT / "init-desktop.sh", ROOT / "smoke.sh"):
+        for path in (START, ROOT / "cloud-brave.sh", ROOT / "init-desktop.sh", ROOT / "smoke.sh", ROOT / "mobile-service.sh", ROOT / "brave-autostart.sh"):
             with self.subTest(file=path.name):
                 result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)

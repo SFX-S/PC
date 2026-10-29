@@ -7,12 +7,16 @@ ENV TITLE="Cloud PC - Brave" \
     PUID=1000 PGID=1000 TZ=Asia/Amman \
     START_DOCKER=false PIXELFLUX_WAYLAND=false \
     SELKIES_ENABLE_SHARING=false \
-    SELKIES_UI_SIDEBAR_SHOW_SHARING=false
+    SELKIES_UI_SIDEBAR_SHOW_SHARING=false \
+    SELKIES_FRAMERATE=20 SELKIES_ENABLE_RESIZE=true \
+    SELKIES_USE_CSS_SCALING=true SELKIES_SECOND_SCREEN=false \
+    SELKIES_AUDIO_ON_START=false SELKIES_WEBCAM_ENABLED=false \
+    BROWSER_AUTO_START=false
 
 COPY extra-packages.txt /opt/cloud-pc/extra-packages.txt
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       ca-certificates curl fonts-noto-core fonts-noto-color-emoji git nano python3 \
+       ca-certificates curl fonts-noto-core fonts-noto-color-emoji git nano python3 wmctrl xdotool xclip \
     && curl --fail --show-error --location --retry 3 \
        https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg \
        -o /usr/share/keyrings/brave-browser-archive-keyring.gpg \
@@ -32,8 +36,15 @@ COPY Brave.desktop /opt/cloud-pc/Brave.desktop
 COPY autostart.desktop /opt/cloud-pc/autostart.desktop
 COPY brave-helper.desktop /usr/share/xfce4/helpers/brave.desktop
 COPY start.html /opt/cloud-pc/start.html
+COPY mobile.html /opt/cloud-pc/mobile.html
+COPY mobile.js /opt/cloud-pc/mobile.js
+COPY mobile-layout.js /opt/cloud-pc/mobile-layout.js
+COPY mobile-control.py /opt/cloud-pc/mobile-control.py
+COPY mobile-service.sh /custom-services.d/mobile-control
+COPY brave-autostart.sh /usr/local/bin/cloud-brave-autostart
 RUN chmod 0755 /usr/local/bin/cloud-brave /custom-cont-init.d/20-cloud-pc \
-    /usr/local/bin/cloud-pc-start \
+    /usr/local/bin/cloud-pc-start /usr/local/bin/cloud-brave-autostart \
+    /custom-services.d/mobile-control \
     && sed -i 's|^Exec=.*|Exec=/usr/local/bin/cloud-brave %U|' /usr/share/applications/brave-browser.desktop \
     && python3 /opt/cloud-pc/configure-nginx.py /defaults/default.conf
 
